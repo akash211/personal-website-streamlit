@@ -1,9 +1,10 @@
 # Importing packages
 import re
-from datetime import datetime as dt
+# from datetime import datetime as dt
+import time
 
 import pandas as pd
-from bs4 import BeautifulSoup
+# from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.wait import WebDriverWait
@@ -128,9 +129,38 @@ last_update_date = re.findall(r'(\d\d\d\d-\d\d-\d\d)', bot.find_element(By.CLASS
 bot.find_element(By.CLASS_NAME, 'insights').click()
 bot.find_element(By.CLASS_NAME, 'su-checkbox-label').click()
 
-WebDriverWait(bot, 10).until(
-    EC.presence_of_element_located((By.CLASS_NAME, 'card-title'))
+iframe = bot.find_element(By.ID, 'insights_frame')
+
+WebDriverWait(bot, 20).until(
+    EC.presence_of_element_located((By.ID, 'insights_frame'))
 )
 
-tickertape_elements = bot.find_elements(By.CLASS_NAME, 'card')
+bot.switch_to.frame(iframe)
+
+tickertape_elements = bot.find_elements(By.CLASS_NAME, 'card-title')
 Beta = tickertape_elements[0].text.replace("Beta (β): ", "")
+PE_ratio = tickertape_elements[1].text.replace("PE Ratio: ", "")
+Red_Flags = tickertape_elements[3].text.replace("Redflags: ", "").replace("🚩", "")
+
+# PriceForecast details
+overall_price_forecast = tickertape_elements[2].text.replace("Price Forecast: ", "")
+bot.find_element(By.CLASS_NAME, 'card-link').click()
+portfolio_forecast_table_details = bot.find_element(By.CLASS_NAME, 'insight-container').text
+bot.find_element(By.CLASS_NAME, 'nav-arrow-button').click()
+time.sleep(2)
+portfolio_forecast_table_details += bot.find_element(By.CLASS_NAME, 'insight-container').text
+bot.find_elements(By.CLASS_NAME, 'nav-arrow-button')[1].click()
+time.sleep(2)
+portfolio_forecast_table_details += bot.find_element(By.CLASS_NAME, 'insight-container').text
+bot.find_elements(By.CLASS_NAME, 'nav-arrow-button')[1].click()
+time.sleep(2)
+portfolio_forecast_table_details += bot.find_element(By.CLASS_NAME, 'insight-container').text
+
+regex_pattern_for_getting_forecast = re.compile(r"([A-Z]+) ([0-9.%]+)\n.+?([0-9.%]+).+?([0-9.]+%)")
+
+forecast_list = regex_pattern_for_getting_forecast.findall(portfolio_forecast_table_details)
+
+forecast_dataframe = pd.DataFrame(forecast_list,
+                                  columns=['stock_name', 'forecast%', 'expected_return%', 'last3years_cagr%'])
+
+
