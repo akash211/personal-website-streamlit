@@ -5,7 +5,7 @@ from PIL import Image
 
 
 # Find more emojis here: https://www.webfx.com/tools/emoji-cheat-sheet/
-st.set_page_config(page_title="My Webpage", page_icon=":tada:", layout="wide")
+st.set_page_config(page_title="My Stock Portfolio", page_icon=":money_with_wings:", layout="wide")
 
 
 def load_lottieurl(url):
@@ -30,20 +30,19 @@ img_lottie_animation = Image.open("images/yt_lottie_animation.png")
 
 # ---- HEADER SECTION ----
 with st.container():
-    st.subheader("Hi, I am Sven :wave:")
-    st.title("A Data Analyst From Germany")
+    st.subheader("My Current Portfolio on Zerodha :bank:")
     st.write(
-        "I am passionate about finding ways to use Python and VBA to be more efficient and effective in business settings."
+        "I will keep updating it as I buy or sell new stocks"
     )
-    st.write("[Learn More >](https://pythonandvba.com)")
+    st.write("[New to Zerodha:question:, Learn More >](https://zerodha.com)")
 
 # ---- WHAT I DO ----
 with st.container():
     st.write("---")
     left_column, right_column = st.columns(2)
     with left_column:
-        st.header("What I do")
-        st.write("##")
+        st.header("List of stocks I own")
+        st.write("with their %")
         st.write(
             """
             On my YouTube channel I am creating tutorials for people who:
