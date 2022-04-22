@@ -2,6 +2,7 @@
 import re
 # from datetime import datetime as dt
 import time
+import os
 
 import pandas as pd
 # from bs4 import BeautifulSoup
@@ -66,7 +67,7 @@ def console_login(bot_, username, password, pin):
 
 
 # Creating chrome instance and login to console and opening Holdings section
-bot = console_login(chrome(), "RA7623", "New8@Zerodha", "697270")
+bot = console_login(chrome(), os.environ['zerodha_username'], os.environ['zerodha_password'], os.environ['zerodha_pin'])
 
 # Proper stocks Data
 portfolio_table = pd.read_html(bot.page_source)[0]
