@@ -66,11 +66,16 @@ def console_login(bot_, username, password, pin):
     return bot_
 
 
+def getting_stocks(bot_):
+    # Proper stocks Data
+    return pd.read_html(bot_.page_source)[0]
+
+
 # Creating chrome instance and login to console and opening Holdings section
 bot = console_login(chrome(), os.environ['zerodha_username'], os.environ['zerodha_password'], os.environ['zerodha_pin'])
 
-# Proper stocks Data
-portfolio_table = pd.read_html(bot.page_source)[0]
+portfolio_table = getting_stocks(bot)
+
 
 # object of ActionChains
 a = ActionChains(bot)
