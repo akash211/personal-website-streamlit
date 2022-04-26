@@ -8,7 +8,7 @@ import numpy as np
 from selenium.common.exceptions import TimeoutException
 from sqlalchemy import create_engine
 import urllib
-import pyodbc
+# import pyodbc
 import pandas as pd
 # from bs4 import BeautifulSoup
 from selenium import webdriver
@@ -35,7 +35,7 @@ def delay(time_=3):
     time.sleep(time_)
 
 
-def console_login(bot_, username, password, pin):
+def console_login(bot_, username, password, pin, wait):
     bot_.get("https://console.zerodha.com")
     WebDriverWait(bot_, wait).until(
         EC.element_to_be_clickable((By.XPATH, '//*[text()="Login with Kite "]'))
@@ -74,7 +74,7 @@ def getting_stocks(bot_):
     return pd.read_html(bot_.page_source)[0]
 
 
-def breakup_dividend_data(bot_, i_):
+def breakup_dividend_data(bot_, i_, wait_):
     # object of ActionChains
     a = ActionChains(bot_)
 
@@ -118,7 +118,7 @@ def replace_function(date_with_attributes):
     return date_with_attributes.replace(' ipo', '').replace(' bonus', '')
 
 
-def sector(name='current'):
+def sector(bot, name='current'):
     sector_allocation = bot.find_element(By.CLASS_NAME, 'scLabels').text
     sector_name, allocation_percentage = [], []
 
@@ -130,7 +130,7 @@ def sector(name='current'):
     return pd.DataFrame({'sector_name': sector_name, 'allocation_percentage_' + name: allocation_percentage})
 
 
-def cap(name='current'):
+def cap(bot, name='current'):
     cap_allocation = bot.find_element(By.ID, 'stock_labels').text
     cap_name, allocation_percentage = [], []
 
@@ -143,15 +143,14 @@ def cap(name='current'):
     return pd.DataFrame({'cap_name': cap_name, 'allocation_percentage_' + name: allocation_percentage}).iloc[:3]
 
 
-def breakup_dividend_complete():
+def breakup_dividend_complete(bot, portfolio_table, wait_, last_update_date):
     # Getting breakup and dividend table details
     breakup_details = pd.DataFrame(columns=['Symbol', 'Date', 'Qty.', 'Price', 'Age (days)', 'P&L'])
     dividend_details = pd.DataFrame(columns=['Symbol', 'Date', 'Qty', 'Dividend / Share (DPS)', 'Total dividend'])
     for stock_counter in range(len(portfolio_table)):
         symbol = portfolio_table.iloc[stock_counter]['Symbol']
-        print(symbol)
         try:
-            breakup, dividend = breakup_dividend_data(bot, stock_counter)
+            breakup, dividend = breakup_dividend_data(bot, stock_counter, wait_)
             breakup = breakup[np.arange(len(breakup)) % 2 == 0]
             breakup['Symbol'] = symbol
             breakup_details = pd.concat([breakup_details, breakup])
@@ -169,13 +168,13 @@ def breakup_dividend_complete():
     write_table(breakup_details, 'breakup', if_exists='replace')
 
 
-def sector_cap_complete():
-    sector_wise_data = sector()
-    cap_wise_data = cap()
+def sector_cap_complete(bot, last_update_date):
+    sector_wise_data = sector(bot)
+    cap_wise_data = cap(bot)
     bot.find_elements(By.CLASS_NAME, 'su-radio-label')[1].click()
     delay()
-    sector_wise_data_ = sector(name='invested')
-    cap_wise_data_ = cap(name='invested')
+    sector_wise_data_ = sector(bot, name='invested')
+    cap_wise_data_ = cap(bot, name='invested')
     cap_wise_data = pd.merge(cap_wise_data, cap_wise_data_, on="cap_name")
     sector_wise_data = pd.merge(sector_wise_data, sector_wise_data_, on="sector_name")
     cap_wise_data['source_last_updated'] = last_update_date
@@ -186,7 +185,7 @@ def sector_cap_complete():
     write_table(sector_wise_data, 'sector_table', if_exists='replace')
 
 
-def insights_extract():
+def insights_extract(bot, wait, last_update_date):
     bot.find_element(By.CLASS_NAME, 'insights').click()
     bot.find_element(By.CLASS_NAME, 'su-checkbox-label').click()
     iframe = bot.find_element(By.ID, 'insights_frame')
@@ -207,7 +206,7 @@ def insights_extract():
     write_table(insights, 'insights', if_exists='replace')
 
 
-def forecast_function():
+def forecast_function(bot, last_update_date):
     bot.find_element(By.CLASS_NAME, 'card-link').click()
     portfolio_forecast_table_details = bot.find_element(By.CLASS_NAME, 'insight-container').text
     bot.find_element(By.CLASS_NAME, 'nav-arrow-button').click()
@@ -229,12 +228,11 @@ def forecast_function():
 
 
 def main():
-    global wait, wait_, bot, last_update_date, portfolio_table
     wait = 10
     wait_ = 2
     # Creating chrome instance and login to console and opening Holdings section
     bot = console_login(chrome(), os.environ['zerodha_username'], os.environ['zerodha_password'],
-                        os.environ['zerodha_pin'])
+                        os.environ['zerodha_pin'], wait)
     # Last Updated date
     last_update_date = re.findall(r'(\d\d\d\d-\d\d-\d\d)', bot.find_element(By.CLASS_NAME, 'last-updated').text)[0]
     # Getting portfolio details table
@@ -242,13 +240,13 @@ def main():
     portfolio_table['last_update_date'] = dt.strftime(dt.now(), "%Y-%m-%d %H:%M:%S")
     portfolio_table['source_last_updated'] = last_update_date
     write_table(portfolio_table.drop('Prev. close', axis=1), 'TargetTable', if_exists='replace')
-    breakup_dividend_complete()
+    breakup_dividend_complete(bot, portfolio_table, wait_, last_update_date)
     # Getting sector and cap wise data
-    sector_cap_complete()
+    sector_cap_complete(bot, last_update_date)
     # Getting Insights
-    insights_extract()
+    insights_extract(bot, wait, last_update_date)
     # PriceForecast details
-    forecast_function()
+    forecast_function(bot, last_update_date)
 
 
 if __name__ == '__main__':
