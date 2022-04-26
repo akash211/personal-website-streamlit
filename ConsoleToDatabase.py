@@ -1,9 +1,11 @@
 # Importing packages
 import re
-# from datetime import datetime as dt
+from datetime import datetime as dt
 import time
 import os
-
+from sqlalchemy import create_engine
+import urllib
+import pyodbc
 import pandas as pd
 # from bs4 import BeautifulSoup
 from selenium import webdriver
@@ -34,18 +36,18 @@ def delay(time_=3):
 
 def console_login(bot_, username, password, pin):
     bot_.get("https://console.zerodha.com")
-    WebDriverWait(bot, wait).until(
+    WebDriverWait(bot_, wait).until(
         EC.element_to_be_clickable((By.XPATH, '//*[text()="Login with Kite "]'))
     )
     bot_.find_element(By.XPATH, '//*[text()="Login with Kite "]').click()
-    WebDriverWait(bot, wait).until(
+    WebDriverWait(bot_, wait).until(
         EC.presence_of_element_located((By.ID, 'userid'))
     )
 
     bot_.find_element(By.ID, 'userid').send_keys(username)
     bot_.find_element(By.ID, 'password').send_keys(password)
     bot_.find_element(By.CLASS_NAME, 'button-orange').click()
-    WebDriverWait(bot, wait).until(
+    WebDriverWait(bot_, wait).until(
         EC.presence_of_element_located((By.ID, 'pin'))
     )
 
@@ -71,37 +73,73 @@ def getting_stocks(bot_):
     return pd.read_html(bot_.page_source)[0]
 
 
+def breakup_dividend_data(bot_, i_):
+    # object of ActionChains
+    a = ActionChains(bot_)
+
+    t = bot_.find_elements(By.CLASS_NAME, 'textleft')[i_]
+
+    # Getting breakup and dividend details
+    a.move_to_element(t).perform()
+    bot_.find_elements(By.CLASS_NAME, 'flag-container')[i_].click()
+    WebDriverWait(bot_, wait).until(
+        EC.element_to_be_clickable((By.XPATH, '//*[contains(text(), "breakdown")]'))
+    )
+    bot_.find_element(By.XPATH, '//*[contains(text(), "breakdown")]').click()
+    delay()
+    breakdown = pd.read_html(bot_.page_source)[1]
+    bot_.find_element(By.CLASS_NAME, 'close-modal').click()
+    delay()
+    a.move_to_element(t).perform()
+    bot_.find_elements(By.CLASS_NAME, 'flag-container')[i_].click()
+    WebDriverWait(bot_, wait).until(
+        EC.element_to_be_clickable((By.XPATH, '//*[contains(text(), "dividend")]'))
+    )
+    bot_.find_element(By.XPATH, '//*[contains(text(), "dividend")]').click()
+    delay()
+    try:
+        dividend_ = pd.read_html(bot_.page_source)[1]
+    except IndexError:
+        dividend_ = 0
+    bot_.find_element(By.CLASS_NAME, 'close-modal').click()
+    return [breakdown, dividend_]
+
+
+def write_table(df, tbl_name, if_exists='append'):
+    quoted = urllib.parse.quote_plus(
+        "DRIVER={SQL Server Native Client 11.0};SERVER=VIVOBOOK-PRO;DATABASE=akash;Trusted_Connection=yes;")
+    engine = create_engine('mssql+pyodbc:///?odbc_connect={}'.format(quoted))
+
+    df.to_sql(tbl_name, schema='dbo', con=engine, index=False, if_exists=if_exists)
+
+
 # Creating chrome instance and login to console and opening Holdings section
 bot = console_login(chrome(), os.environ['zerodha_username'], os.environ['zerodha_password'], os.environ['zerodha_pin'])
 
+# Last Updated date
+last_update_date = re.findall(r'(\d\d\d\d-\d\d-\d\d)', bot.find_element(By.CLASS_NAME, 'last-updated').text)[0]
+
+# Getting portfolio details table
 portfolio_table = getting_stocks(bot)
 
+portfolio_table['last_update_date'] = dt.strftime(dt.now(), "%Y-%m-%d %H:%M:%S")
+portfolio_table['source_last_updated'] = last_update_date
 
-# object of ActionChains
-a = ActionChains(bot)
+write_table(portfolio_table.drop('Prev. close', axis=1), 'TargetTable', if_exists='replace')
 
-t = bot.find_elements(By.CLASS_NAME, 'textleft')[2]
 
-# Getting breakup and dividend details
-a.move_to_element(t).perform()
-print(len(bot.find_elements(By.CLASS_NAME, 'flag-container')))
-bot.find_elements(By.CLASS_NAME, 'flag-container')[2].click()
-bot.find_element(By.XPATH, '//*[contains(text(), "breakdown")]').click()
-delay()
-breakdown = pd.read_html(bot.page_source)[1]
-bot.find_element(By.CLASS_NAME, 'close-modal').click()
-delay()
-a.move_to_element(t).perform()
-bot.find_elements(By.CLASS_NAME, 'flag-container')[2].click()
-bot.find_element(By.XPATH, '//*[contains(text(), "dividend")]').click()
-delay()
-try:
-    dividend = pd.read_html(bot.page_source)[1]
-    print(dividend)
-except IndexError:
-    pass
-bot.find_element(By.CLASS_NAME, 'close-modal').click()
-print(breakdown)
+# Getting breakup and dividend table details
+breakup, dividend = breakup_dividend_data(bot, 9)
+print("~~~~~~~~~~~")
+print(breakup)
+print("~~~~~~~~~~~")
+print(dividend)
+print("~~~~~~~~~~~")
+
+breakup_details = 0
+
+for stock_counter in range(len(portfolio_table)):
+    breakup_dividend_data(bot, stock_counter + 1)
 
 # ****** Getting Current reports ******
 # Getting sector wise
@@ -163,9 +201,6 @@ cap_wise_data_ = stocks_wise_data.iloc[:3]
 cap_wise_data = pd.merge(cap_wise_data, cap_wise_data_, on="cap_name")
 sector_wise_data = pd.merge(sector_wise_data, sector_wise_data_, on="sector_name")
 
-# Last Updated date
-last_update_date = re.findall(r'(\d\d\d\d-\d\d-\d\d)', bot.find_element(By.CLASS_NAME, 'last-updated').text)[0]
-
 # Getting Insights
 bot.find_element(By.CLASS_NAME, 'insights').click()
 bot.find_element(By.CLASS_NAME, 'su-checkbox-label').click()
@@ -197,7 +232,7 @@ bot.find_elements(By.CLASS_NAME, 'nav-arrow-button')[1].click()
 delay()
 portfolio_forecast_table_details += bot.find_element(By.CLASS_NAME, 'insight-container').text
 
-regex_pattern_for_getting_forecast = re.compile(r"([A-Z]+) ([0-9.%]+)\n.+?([0-9.%]+).+?([0-9.]+%)")
+regex_pattern_for_getting_forecast = re.compile(r"([A-Z]+) ([\d.%]+)\n.+?([\d.%]+).+?([\d.]+%)")
 
 forecast_list = regex_pattern_for_getting_forecast.findall(portfolio_forecast_table_details)
 
